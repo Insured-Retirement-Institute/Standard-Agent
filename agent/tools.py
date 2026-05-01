@@ -286,6 +286,229 @@ def check_style_guide_rules(yaml_content: str) -> str:
                                 "message": "correlationId should be in headers, not response body",
                                 "severity": "error"
                             })
+        # --- F-04: policyNumber pattern too restrictive ---
+        for schema_name, schema in schemas.items():
+            props = schema.get("properties", {})
+            for prop_name, prop_def in props.items():
+                if prop_name.lower() == "policynumber" and isinstance(prop_def, dict):
+                    pat = prop_def.get("pattern", "")
+                    ml = prop_def.get("maxLength")
+                    if pat and pat != "":
+                        violations.append({
+                            "rule": "STYLE-010",
+                            "location": f"components/schemas/{schema_name}/properties/{prop_name}",
+                            "message": f"policyNumber has pattern '{pat}' which is more restrictive than the cross-spec standard (minLength: 1, maxLength: 30, no character class restriction)",
+                            "severity": "warning"
+                        })
+                    if ml and ml != 30:
+                        warnings.append({
+                            "rule": "STYLE-010",
+                            "location": f"components/schemas/{schema_name}/properties/{prop_name}",
+                            "message": f"policyNumber maxLength is {ml}, cross-spec standard is 30",
+                            "severity": "info"
+                        })
+        # Also check path/query parameters
+        for path, path_item in paths.items():
+            for method in ["get", "post", "put", "patch", "delete"]:
+                operation = path_item.get(method, {})
+                for param in operation.get("parameters", []):
+                    if isinstance(param, dict) and param.get("name", "").lower() == "policynumber":
+                        ps = param.get("schema", {})
+                        pat = ps.get("pattern", "")
+                        if pat:
+                            violations.append({
+                                "rule": "STYLE-010",
+                                "location": f"paths/{path}/{method}/parameters/policyNumber",
+                                "message": f"policyNumber parameter has pattern '{pat}', cross-spec standard uses minLength: 1, maxLength: 30 with no pattern",
+                                "severity": "warning"
+                            })
+            # Also check path-level parameters
+            for param in path_item.get("parameters", []):
+                if isinstance(param, dict) and param.get("name", "").lower() == "policynumber":
+                    ps = param.get("schema", {})
+                    pat = ps.get("pattern", "")
+                    if pat:
+                        violations.append({
+                            "rule": "STYLE-010",
+                            "location": f"paths/{path}/parameters/policyNumber",
+                            "message": f"policyNumber parameter has pattern '{pat}', cross-spec standard uses minLength: 1, maxLength: 30 with no pattern",
+                            "severity": "warning"
+                        })
+
+        # --- F-05: oneOf fields missing mutual exclusivity descriptions ---
+        for schema_name, schema in schemas.items():
+            one_of = schema.get("oneOf", [])
+            if len(one_of) >= 2:
+                # Collect all required fields across branches
+                all_exclusive_fields = set()
+                for branch in one_of:
+                    if isinstance(branch, dict):
+                        all_exclusive_fields.update(branch.get("required", []))
+                # Check if the schema or its properties have descriptions about exclusivity
+                props = schema.get("properties", {})
+                for field_name in all_exclusive_fields:
+                    if field_name in props:
+                        desc = str(props[field_name].get("description", ""))
+                        if not desc or ("exclusive" not in desc.lower() and "one of" not in desc.lower() and "mutually" not in desc.lower()):
+                            warnings.append({
+                                "rule": "STYLE-011",
+                                "location": f"components/schemas/{schema_name}/properties/{field_name}",
+                                "message": f"Field '{field_name}' is part of a oneOf mutual exclusivity constraint but has no description explaining when to use it vs alternatives",
+                                "severity": "warning"
+                            })
+
+        # --- F-06: Conditional fields missing descriptions ---
+        for schema_name, schema in schemas.items():
+            all_of = schema.get("allOf", [])
+            for block in all_of:
+                if not isinstance(block, dict):
+                    continue
+                then_block = block.get("then", {})
+                if not isinstance(then_block, dict):
+                    continue
+                then_required = then_block.get("required", [])
+                props = schema.get("properties", {})
+                for field_name in then_required:
+                    if field_name in props:
+                        desc = str(props[field_name].get("description", ""))
+                        if not desc or ("required when" not in desc.lower() and "conditional" not in desc.lower()):
+                            warnings.append({
+                                "rule": "STYLE-012",
+                                "location": f"components/schemas/{schema_name}/properties/{field_name}",
+                                "message": f"Field '{field_name}' is conditionally required (via allOf/if/then) but has no description explaining the condition",
+                                "severity": "warning"
+                            })
+
+        # --- F-07: Enum cross-spec inconsistency (check known field names) ---
+        known_enums = {
+            "assetclass": {"source": "Policy Service", "expected": ["FIXED", "VARIABLE", "INDEXED", "MODEL", "CASH", "OTHER"]},
+        }
+        for schema_name, schema in schemas.items():
+            props = schema.get("properties", {})
+            for prop_name, prop_def in props.items():
+                if not isinstance(prop_def, dict):
+                    continue
+                key = prop_name.lower()
+                if key in known_enums and "enum" in prop_def:
+                    current = prop_def["enum"]
+                    expected = known_enums[key]["expected"]
+                    source = known_enums[key]["source"]
+                    if set(current) != set(expected):
+                        missing = set(expected) - set(current)
+                        extra = set(current) - set(expected)
+                        msg = f"'{prop_name}' enum {current} differs from {source} {expected}."
+                        if missing:
+                            msg += f" Missing: {list(missing)}."
+                        if extra:
+                            msg += f" Extra: {list(extra)}."
+                        violations.append({
+                            "rule": "STYLE-013",
+                            "location": f"components/schemas/{schema_name}/properties/{prop_name}",
+                            "message": msg,
+                            "severity": "warning"
+                        })
+
+        # --- F-08: Unconstrained string fields (known important fields) ---
+        important_fields = {
+            "producernumber": "Producer carrier-assigned ID",
+            "npn": "National Producer Number",
+            "crdnumber": "Central Registration Depository number",
+            "arrangementtype": "Arrangement type — should have enum or maxLength",
+            "arrangementsubtype": "Arrangement subtype — should have enum or maxLength",
+        }
+        for schema_name, schema in schemas.items():
+            props = schema.get("properties", {})
+            for prop_name, prop_def in props.items():
+                if not isinstance(prop_def, dict):
+                    continue
+                key = prop_name.lower()
+                if key in important_fields:
+                    has_constraint = any(k in prop_def for k in ["maxLength", "minLength", "pattern", "enum", "format"])
+                    if not has_constraint and prop_def.get("type") == "string":
+                        warnings.append({
+                            "rule": "STYLE-014",
+                            "location": f"components/schemas/{schema_name}/properties/{prop_name}",
+                            "message": f"'{prop_name}' ({important_fields[key]}) is an unconstrained string — add maxLength, enum, or pattern",
+                            "severity": "warning"
+                        })
+
+        # --- F-04: policyNumber pattern too restrictive ---
+        for path, path_item in paths.items():
+            for method in ["get", "post", "put", "patch", "delete"]:
+                operation = path_item.get(method, {})
+                for param in operation.get("parameters", []):
+                    p_name = param.get("name", "")
+                    p_schema = param.get("schema", {})
+                    if p_name.lower() == "policynumber" and "pattern" in p_schema:
+                        violations.append({
+                            "rule": "STYLE-010",
+                            "location": f"paths/{path}/{method}/parameters/{p_name}",
+                            "message": (
+                                f"policyNumber pattern '{p_schema['pattern']}' is more "
+                                f"restrictive than cross-spec standard (minLength: 1, maxLength: 30). "
+                                f"Replace pattern with minLength/maxLength constraints."
+                            ),
+                            "severity": "warning"
+                        })
+        # Also check components/parameters
+        for param_name, param_def in spec.get("components", {}).get("parameters", {}).items():
+            if param_name.lower() == "policynumber" or param_def.get("name", "").lower() == "policynumber":
+                p_schema = param_def.get("schema", {})
+                if "pattern" in p_schema:
+                    violations.append({
+                        "rule": "STYLE-010",
+                        "location": f"components/parameters/{param_name}",
+                        "message": (
+                            f"policyNumber pattern '{p_schema['pattern']}' is more "
+                            f"restrictive than cross-spec standard (minLength: 1, maxLength: 30)."
+                        ),
+                        "severity": "warning"
+                    })
+
+        # --- F-07: assetClass enum inconsistency ---
+        iri_asset_classes = {"FIXED", "VARIABLE", "INDEXED", "MODEL", "CASH", "OTHER"}
+        for schema_name, schema in schemas.items():
+            props = schema.get("properties", {})
+            for prop_name, prop_def in props.items():
+                if prop_name.lower() == "assetclass" and "enum" in prop_def:
+                    spec_enums = set(prop_def["enum"])
+                    missing = iri_asset_classes - spec_enums
+                    extra = spec_enums - iri_asset_classes
+                    if missing or extra:
+                        warnings.append({
+                            "rule": "STYLE-011",
+                            "location": f"components/schemas/{schema_name}/properties/{prop_name}",
+                            "message": (
+                                f"assetClass enum {list(spec_enums)} differs from cross-spec "
+                                f"standard {list(iri_asset_classes)}."
+                                + (f" Missing: {list(missing)}." if missing else "")
+                                + (f" Extra: {list(extra)}." if extra else "")
+                                + " Flag for working group alignment."
+                            ),
+                            "severity": "warning"
+                        })
+
+        # --- F-08: Unconstrained string fields (producer, arrangement) ---
+        constrained_check_fields = {
+            "producernumber", "npn", "crdnumber",
+            "arrangementtype", "arrangementsubtype"
+        }
+        for schema_name, schema in schemas.items():
+            props = schema.get("properties", {})
+            for prop_name, prop_def in props.items():
+                if prop_name.lower() in constrained_check_fields:
+                    has_constraint = any(k in prop_def for k in ["maxLength", "enum", "pattern", "minLength"])
+                    if prop_def.get("type") == "string" and not has_constraint:
+                        warnings.append({
+                            "rule": "STYLE-012",
+                            "location": f"components/schemas/{schema_name}/properties/{prop_name}",
+                            "message": (
+                                f"'{prop_name}' is an unconstrained string. "
+                                f"Add maxLength, enum, or pattern constraint."
+                            ),
+                            "severity": "warning"
+                        })
+
         return json.dumps({
             "violations": violations,
             "warnings": warnings,
@@ -1044,7 +1267,7 @@ def check_conditional_logic(yaml_content: str) -> str:
                 for status_code, resp in responses.items():
                     if str(status_code) == "202" and isinstance(resp, dict):
                         desc = str(resp.get("description", ""))
-                        if "created" in desc.lower() and "accepted" not in desc.lower():
+                        if desc.lower().startswith("created"):
                             findings.append({
                                 "severity": "moderate",
                                 "rule": "STRUCT-007",
@@ -1059,7 +1282,7 @@ def check_conditional_logic(yaml_content: str) -> str:
                         ref_resp = spec.get("components", {}).get("responses", {}).get(ref_name, {})
                         if isinstance(ref_resp, dict):
                             desc = str(ref_resp.get("description", ""))
-                            if str(status_code) == "202" and "created" in desc.lower() and "accepted" not in desc.lower():
+                            if str(status_code) == "202" and desc.lower().startswith("created"):
                                 findings.append({
                                     "severity": "moderate",
                                     "rule": "STRUCT-007",
@@ -1068,6 +1291,91 @@ def check_conditional_logic(yaml_content: str) -> str:
                                     "detail": "202 is 'Accepted', not 'Created'.",
                                     "recommendation": "Change description to 'Accepted — ...'"
                                 })
+
+        # --- CHECK 5: oneOf fields missing mutual exclusivity descriptions ---
+        for schema_name, schema_def in schemas.items():
+            if not isinstance(schema_def, dict):
+                continue
+            one_of = schema_def.get("oneOf", [])
+            if len(one_of) >= 2:
+                # Collect all required fields across branches
+                all_req_fields = set()
+                for branch in one_of:
+                    if isinstance(branch, dict):
+                        all_req_fields.update(branch.get("required", []))
+                # Check if those fields have descriptions in properties
+                schema_props = schema_def.get("properties", {}) or {}
+                for field_name in all_req_fields:
+                    field_def = schema_props.get(field_name, {})
+                    if isinstance(field_def, dict) and not field_def.get("description"):
+                        findings.append({
+                            "severity": "moderate",
+                            "rule": "STRUCT-008",
+                            "location": f"components/schemas/{schema_name}/properties/{field_name}",
+                            "title": f"oneOf field '{field_name}' missing mutual exclusivity description",
+                            "detail": (
+                                f"'{field_name}' participates in a oneOf constraint in "
+                                f"{schema_name} but has no description explaining when it "
+                                f"should be provided vs omitted."
+                            ),
+                            "recommendation": (
+                                f"Add a description to '{field_name}' explaining its mutual "
+                                f"exclusivity with the other oneOf fields."
+                            )
+                        })
+                # Also check for schema-level description on oneOf schemas
+                if not schema_def.get("description") and all_req_fields:
+                    findings.append({
+                        "severity": "minor",
+                        "rule": "STRUCT-009",
+                        "location": f"components/schemas/{schema_name}",
+                        "title": f"Schema '{schema_name}' with oneOf lacks description",
+                        "detail": (
+                            f"{schema_name} uses oneOf for mutual exclusivity but has no "
+                            f"schema-level description explaining the constraint."
+                        ),
+                        "recommendation": (
+                            f"Add a description like: 'Exactly one of X or Y must be "
+                            f"provided — not both.'"
+                        )
+                    })
+
+        # --- CHECK 6: Conditional (if/then) fields missing descriptions ---
+        for schema_name, schema_def in schemas.items():
+            if not isinstance(schema_def, dict):
+                continue
+            all_of = schema_def.get("allOf", [])
+            for i, block in enumerate(all_of):
+                if not isinstance(block, dict) or "if" not in block:
+                    continue
+                then_block = block.get("then", {})
+                if not isinstance(then_block, dict):
+                    continue
+                # Fields made required by then
+                then_required = then_block.get("required", [])
+                # Also check nested then properties
+                then_props = then_block.get("properties", {}) or {}
+                conditional_fields = set(then_required) | set(then_props.keys())
+                # Check if these fields have descriptions in the main schema
+                schema_props = schema_def.get("properties", {}) or {}
+                for field_name in conditional_fields:
+                    field_def = schema_props.get(field_name, {})
+                    if isinstance(field_def, dict) and not field_def.get("description"):
+                        findings.append({
+                            "severity": "minor",
+                            "rule": "STRUCT-010",
+                            "location": f"components/schemas/{schema_name}/properties/{field_name}",
+                            "title": f"Conditional field '{field_name}' missing description",
+                            "detail": (
+                                f"'{field_name}' is conditionally required via allOf[{i}] "
+                                f"if/then but has no description explaining when it is "
+                                f"required or forbidden."
+                            ),
+                            "recommendation": (
+                                f"Add a description to '{field_name}' explaining the "
+                                f"conditions under which it is required."
+                            )
+                        })
 
         # Summary
         critical = [f for f in findings if f["severity"] == "critical"]

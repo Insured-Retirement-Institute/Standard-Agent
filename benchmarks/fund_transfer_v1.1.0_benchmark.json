@@ -1,0 +1,86 @@
+{
+  "spec": "Fund Transfer Service v1.1.0",
+  "url": "https://github.com/Insured-Retirement-Institute/One-Time-Fund-Transfer/blob/edwardmruiz-2/FundTransfer_v1.1.0.yml",
+  "expected_gate": "FAIL",
+  "expected_findings": [
+    {
+      "id": "F-01",
+      "title": "FundTransferRequest allOf if missing required: [transactionAmounts]",
+      "severity": "Critical",
+      "rule": "STRUCT-003",
+      "both_agents": true
+    },
+    {
+      "id": "F-02",
+      "title": "FundSegment oneOf Case 0 allows neither field (parent context dependency)",
+      "severity": "Critical",
+      "rule": "STRUCT-001",
+      "both_agents": true
+    },
+    {
+      "id": "F-03",
+      "title": "202 FundTransferSuccess description says Created instead of Accepted",
+      "severity": "Moderate",
+      "rule": "STRUCT-007",
+      "both_agents": true
+    },
+    {
+      "id": "F-04",
+      "title": "policyNumber pattern ^[A-Za-z0-9]{6,20}$ too restrictive vs standard minLength:1/maxLength:30",
+      "severity": "Moderate",
+      "rule": "STYLE-010",
+      "both_agents": false,
+      "peer_only": true
+    },
+    {
+      "id": "F-05",
+      "title": "ArrangementEndpoint oneOf fields missing mutual exclusivity descriptions",
+      "severity": "Moderate",
+      "rule": "STRUCT-008",
+      "both_agents": false,
+      "peer_only": true
+    },
+    {
+      "id": "F-06",
+      "title": "TransactionAmounts conditional fields missing descriptions",
+      "severity": "Minor",
+      "rule": "STRUCT-010",
+      "both_agents": false,
+      "peer_only": true
+    },
+    {
+      "id": "F-07",
+      "title": "assetClass enum [FIXED,EQUITY,MODEL] inconsistent with Policy Service",
+      "severity": "Minor",
+      "rule": "STYLE-011",
+      "both_agents": false,
+      "peer_only": true
+    },
+    {
+      "id": "F-08",
+      "title": "Producer fields (producerNumber, npn, crdNumber) unconstrained strings",
+      "severity": "Minor",
+      "rule": "STYLE-012",
+      "both_agents": false,
+      "peer_only": true
+    },
+    {
+      "id": "F-09",
+      "title": "Nested if in TransactionAmounts missing required: [amountType]",
+      "severity": "Moderate",
+      "rule": "STRUCT-004",
+      "both_agents": false,
+      "our_only": true
+    },
+    {
+      "id": "F-10",
+      "title": "arrangementType/arrangementSubType unconstrained strings",
+      "severity": "Minor",
+      "rule": "STYLE-012",
+      "both_agents": false,
+      "peer_only": true
+    }
+  ],
+  "minimum_expected_critical": 2,
+  "minimum_expected_total": 8
+}
