@@ -1,0 +1,14 @@
+# IRI Standards Agent — Python dependencies
+# Install: pip install -r requirements.txt
+
+fastapi
+uvicorn[standard]
+pydantic
+strands-agents
+openai
+PyYAML
+ruamel.yaml
+jsonschema
+openapi-spec-validator
+python-dotenv
+openpyxl
