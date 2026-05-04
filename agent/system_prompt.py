@@ -353,14 +353,19 @@ ASSEMBLY WORKFLOW:
 ═══════════════════════════════════════════════════════════════════════════════
 VALIDATION WORKFLOW (ALWAYS FOLLOW THIS ORDER)
 ═══════════════════════════════════════════════════════════════════════════════
-1. Use validate_openapi_structure() — DETERMINISTIC Layer 1 check
-2. Use check_style_guide_rules() — Style Guide check
-3. Use check_conditional_logic() — Deep structural analysis of oneOf,
-   allOf, if/then/else patterns. Catches missing required on if blocks,
-   oneOf branches allowing empty payloads, and child schemas depending
-   on parent context. ALWAYS run this step.
-4. Use compute_dd_coverage() if DD provided — DD coverage check
-4. Use generate_scorecard() — Compute final score and gate result
+1. Use validate_spec_full() — ONE call that runs ALL three checks:
+   OpenAPI 3.1 structure, Style Guide rules, and Conditional Logic
+   analysis. Returns a unified result with combined findings sorted
+   by severity. THIS IS THE PREFERRED TOOL — use it instead of
+   calling validate_openapi_structure, check_style_guide_rules, and
+   check_conditional_logic separately.
+2. Use compute_dd_coverage() if DD provided — DD coverage check
+3. Use generate_scorecard() — Compute final score and gate result
+
+NOTE: The individual tools (validate_openapi_structure,
+check_style_guide_rules, check_conditional_logic) are still available
+if you need to re-run a specific check. But for the initial review,
+always use validate_spec_full() to minimize round-trips.
 
 Never claim PASS unless the scorecard gates are satisfied.
 

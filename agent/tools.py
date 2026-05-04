@@ -21,8 +21,6 @@ Tools:
     - list_schema_names
   Structural Analysis (1):
     - check_conditional_logic
-  Structural Analysis (1):
-    - check_conditional_logic
   Fetch (2):
     - fetch_yaml_from_url
     - fetch_data_dictionary
@@ -1632,6 +1630,97 @@ def fetch_data_dictionary(url: str, sheet_name: str = "", field_name_column: str
         return json.dumps({"success": False, "error": f"Failed: {str(e)[:300]}"})
 
 
+
+
+# ============================================================================
+# CONSOLIDATED VALIDATION TOOL (reduces LLM round-trips from 3 to 1)
+# ============================================================================
+@tool
+def validate_spec_full(yaml_content: str) -> str:
+    """Run ALL validation checks on an OpenAPI spec in a single call.
+    Combines: validate_openapi_structure + check_style_guide_rules + check_conditional_logic.
+    Use this instead of calling the three tools separately — it is faster and produces
+    a unified result.
+
+    Args:
+        yaml_content: The OpenAPI YAML content as a string
+    """
+    import io as _io
+
+    results = {"openapi": None, "style": None, "structural": None, "combined_findings": []}
+
+    # 1. OpenAPI structure validation
+    try:
+        openapi_result = json.loads(validate_openapi_structure(yaml_content=yaml_content))
+        results["openapi"] = openapi_result
+        if not openapi_result.get("valid", False):
+            for err in openapi_result.get("errors", []):
+                results["combined_findings"].append({
+                    "severity": "critical",
+                    "rule": "OPENAPI-001",
+                    "title": "OpenAPI structural error",
+                    "detail": err.get("message", str(err)),
+                    "source": "validate_openapi_structure"
+                })
+    except Exception as e:
+        results["openapi"] = {"error": str(e)}
+
+    # 2. Style guide rules
+    try:
+        style_result = json.loads(check_style_guide_rules(yaml_content=yaml_content))
+        results["style"] = style_result
+        for v in style_result.get("violations", []):
+            results["combined_findings"].append({
+                "severity": "moderate" if v.get("severity") == "error" else "minor",
+                "rule": v.get("rule", "STYLE"),
+                "title": v.get("message", ""),
+                "location": v.get("location", ""),
+                "source": "check_style_guide_rules"
+            })
+        for w in style_result.get("warnings", []):
+            results["combined_findings"].append({
+                "severity": "minor",
+                "rule": w.get("rule", "STYLE"),
+                "title": w.get("message", ""),
+                "location": w.get("location", ""),
+                "source": "check_style_guide_rules"
+            })
+    except Exception as e:
+        results["style"] = {"error": str(e)}
+
+    # 3. Conditional logic / structural analysis
+    try:
+        struct_result = json.loads(check_conditional_logic(yaml_content=yaml_content))
+        results["structural"] = struct_result
+        for f in struct_result.get("findings", []):
+            results["combined_findings"].append({
+                "severity": f.get("severity", "minor"),
+                "rule": f.get("rule", "STRUCT"),
+                "title": f.get("title", ""),
+                "detail": f.get("detail", ""),
+                "location": f.get("location", ""),
+                "recommendation": f.get("recommendation", ""),
+                "source": "check_conditional_logic"
+            })
+    except Exception as e:
+        results["structural"] = {"error": str(e)}
+
+    # Summary
+    critical = [f for f in results["combined_findings"] if f["severity"] == "critical"]
+    moderate = [f for f in results["combined_findings"] if f["severity"] == "moderate"]
+    minor = [f for f in results["combined_findings"] if f["severity"] == "minor"]
+
+    results["summary"] = {
+        "openapi_valid": results.get("openapi", {}).get("valid", False),
+        "total_findings": len(results["combined_findings"]),
+        "critical": len(critical),
+        "moderate": len(moderate),
+        "minor": len(minor),
+        "style_score": results.get("style", {}).get("style_score", 0),
+    }
+
+    return json.dumps(results, indent=2)
+
 # ============================================================================
 # TOOL REGISTRY — Import this from agent.py
 # ============================================================================
@@ -1651,6 +1740,7 @@ AGENT_TOOLS = [
     list_schema_names,
     check_conditional_logic,
     check_conditional_logic,
+    validate_spec_full,
     fetch_yaml_from_url,
     fetch_data_dictionary,
 ]

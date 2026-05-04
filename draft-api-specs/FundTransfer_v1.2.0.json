@@ -1,0 +1,107 @@
+{
+  "method": "POST",
+  "url": "https://api.your-company-domain.com/v1/policies/ABC12345/fund-transfers",
+  "headers": {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "correlationId": "deadbeef-aaaa-bbbb-cccc-ddddeeeeffff"
+  },
+  "query": {
+    "associatedFirmId": "DTCC",
+    "transactionSubType": "FULL_ONE_TIME_REBALANCE"
+  },
+  "body": {
+    "effectiveDate": "2026-03-15",
+    "fundAllocation": "DEFAULT",
+    "allocationOption": "SPECIFIEDFUNDS",
+    "nsccParticipantId": "12345",
+    "cusip": "123ABC456",
+    "transactionAmounts": {
+      "amountType": "FULL_REBALANCE"
+    },
+    "funds": {
+      "transferFromFunds": [
+        {
+          "fundId": "FUND_FIXED_01",
+          "assetClass": "FIXED",
+          "investmentType": "VARIABLE_ANNUITY_FUND",
+          "currentRate": 4.25,
+          "maturityDate": "2030-12-31",
+          "fundSegments": [
+            {
+              "segmentId": "SEG_FROM_01"
+            }
+          ]
+        }
+      ],
+      "transferToFunds": [
+        {
+          "fundId": "FUND_EQUITY_99",
+          "assetClass": "EQUITY",
+          "investmentType": "VARIABLE_ANNUITY_FUND",
+          "currentRate": 6.75,
+          "maturityDate": "2035-06-30",
+          "fundSegments": [
+            {
+              "segmentId": "SEG_TO_01",
+              "requestedPercentage": 100
+            }
+          ]
+        }
+      ]
+    },
+    "arrangement": {
+      "productCode": "ARR_PROD_001",
+      "arrangementType": "SYSTEMATIC_TRANSFER",
+      "arrangementSubType": "MONTHLY",
+      "startDate": "2026-04-01",
+      "endDate": "2030-04-01",
+      "modalAmt": 500,
+      "sourceTransferAmountType": "AMOUNT",
+      "destinationTransferAmountType": "AMOUNT",
+      "arrangementSource": {
+        "subAccountId": "SRC_SUB_ACCT_01",
+        "transferAmount": 500
+      },
+      "arrangementDestination": {
+        "subAccountId": "DEST_SUB_ACCT_01",
+        "transferPercentage": 100
+      }
+    },
+    "investProduct": {
+      "rateLockInfo": "RATE_LOCK_2026",
+      "isLockedIn": true
+    },
+    "auditTransSummation": {
+      "auditTotalType": "COUNT",
+      "auditTotal": 1,
+      "correlationGuid": "550e8400-e29b-41d4-a716-446655440000",
+      "correlationIdState": "INITIAL_USAGE"
+    },
+    "producer": {
+      "producerNumber": "PRD12345",
+      "npn": "99887766",
+      "crdNumber": "CRD445566"
+    },
+    "parties": [
+      {
+        "type": "individual",
+        "firstName": "John",
+        "middleName": "A",
+        "lastName": "Doe",
+        "taxId": "123456789",
+        "relationships": ["owner"],
+        "paymentForm": "ACH",
+        "allocationPercentage": 100
+      },
+      {
+        "type": "entity",
+        "name": "ABC TRUST",
+        "taxId": "987654321",
+        "relationships": ["primaryBeneficiary"],
+        "paymentForm": "CHECK",
+        "allocationPercentage": 0
+      }
+    ]
+  }
+}
