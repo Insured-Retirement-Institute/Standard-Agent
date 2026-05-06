@@ -1,10 +1,20 @@
-# IRI Standards Agent
+# IRI Standards Agent — Production v1.0
 
 **OpenAPI 3.1 YAML Standardization Agent** for IRI Digital-First API specifications.
 
-Validates, creates, and updates OpenAPI specs using the IRI Data Dictionary, DFA Style Guide, and active IRI portal specs — with a 100-point governance scorecard and hallucination resistance.
+Validates, creates, and updates OpenAPI specs using the IRI Data Dictionary, DFA Style Guide, and approved IRI specs — with a 100-point governance scorecard and hallucination resistance.
 
-This agent runs anywhere Python 3.10+ is available.
+## Architecture
+
+Production v1.0 uses a **calibrated LLM prompt** (Claude Opus via Databricks) with only 2 fetch tools. All validation, style checking, and scoring is performed by the LLM reasoning engine — not programmatic validators.
+
+| Component | Purpose |
+|---|---|
+| `agent/agent_prod.py` | Production agent — calibrated prompt + 2 tools |
+| `agent/tools_prod.py` | `fetch_yaml_from_url`, `fetch_data_dictionary` |
+| `app_prod.py` | FastAPI server (port 8000) with chat UI |
+
+**Benchmark:** 87/100 on FundTransfer v1.2.0 (Δ=3 from reference benchmark of 90/100)
 
 ## Quick Start
 
@@ -21,41 +31,40 @@ source venv/bin/activate        # macOS / Linux
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure your API key
-cp .env.example .env
-#    Edit .env and set your OPENAI_API_KEY (see options below)
-
-# 5. Start the agent
-python app.py
+# 4. Start the agent
+python app_prod.py
 ```
 
 Open **http://localhost:8000** in your browser to use the chat UI.
 
-## API Key Configuration
+## Configuration
 
-The agent works with **any OpenAI-compatible API**. Edit your `.env` file with one of:
+The agent uses **Databricks Foundation Model API** (Claude Opus). Authentication is handled automatically via `databricks-sdk`.
 
-| Provider | `OPENAI_API_KEY` | `OPENAI_BASE_URL` | `MODEL_ID` |
-|---|---|---|---|
-| **OpenAI** | `sk-...` | *(leave unset)* | `gpt-4o` |
-| **Azure OpenAI** | Your Azure key | `https://your-resource.openai.azure.com/...` | Your deployment name |
-| **Databricks** | Personal access token (`dapi...`) | `https://your-workspace.databricks.net/serving-endpoints` | `databricks-claude-sonnet-4` |
+| Environment Variable | Description | Default |
+|---|---|---|
+| `MODEL_ID` | Serving endpoint model ID | `databricks-claude-opus-4-7` |
+| `PORT` | Server port | `8000` |
 
-See `.env.example` for full details.
+For local development outside Databricks, set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables.
 
 ## Project Structure
 
 ```
 Standard-Agent/
-├── app.py                  # FastAPI server + chat UI (entry point)
-├── agent/                  # Agent package
-│   ├── agent.py            # Agent creation (portable, no cloud deps)
-│   ├── tools.py            # 13 programmatic tools for OpenAPI validation
-│   └── system_prompt.py    # System prompt with governance rules
-├── draft-api-specs/        # Working group draft specifications
-├── requirements.txt        # Python dependencies
-├── .env.example            # API key configuration template
-├── .gitignore
+├── app_prod.py                 # FastAPI server + chat UI (entry point)
+├── agent/                      # Agent package
+│   ├── __init__.py             # Re-exports create_agent
+│   ├── agent_prod.py           # Production agent (calibrated prompt + tools)
+│   └── tools_prod.py           # 2 fetch tools (URL + Data Dictionary)
+├── draft-api-specs/            # Working group draft specifications
+├── output/                     # Generated corrected YAML specs
+├── benchmarks/                 # Scoring benchmarks for calibration
+├── archive/                    # Previous agent versions (DO NOT USE)
+│   ├── README.md               # Version history
+│   └── agent/                  # v1, v2, v3 agent files
+├── test_agent_prod             # Production validation test notebook
+├── requirements.txt            # Python dependencies
 ├── LICENSE
 └── README.md
 ```
@@ -66,31 +75,19 @@ Standard-Agent/
 
 | Mode | Trigger | Output |
 |---|---|---|
-| **UPDATE** | Provide existing YAML | Patch + updated YAML |
-| **BUILD** | Provide Data Dictionary (no YAML) | New OpenAPI 3.1 YAML |
 | **VALIDATE** | Provide YAML + "validate only" | Governance scorecard |
+| **UPDATE** | Provide existing YAML | Corrected YAML + scorecard |
+| **BUILD** | Provide Data Dictionary (no YAML) | New OpenAPI 3.1 YAML |
 | **COMPARE** | Provide two versions | Diff analysis |
 
-### 13 Tools
+### 2 Production Tools
 
-**Programmatic Validation (6)**
-- `validate_openapi_structure` — OpenAPI 3.1 structural validation
-- `parse_yaml_safely` — YAML-to-JSON parsing
-- `emit_yaml` — JSON-to-YAML conversion
-- `check_style_guide_rules` — IRI DFA Style Guide checks
-- `compute_dd_coverage` — Data Dictionary coverage analysis
-- `generate_scorecard` — 100-point governance scorecard
+| Tool | Purpose |
+|---|---|
+| `fetch_yaml_from_url` | Download YAML from GitHub/raw URLs |
+| `fetch_data_dictionary` | Download Excel/CSV Data Dictionary |
 
-**Multi-Part Assembly (2)**
-- `manage_multipart_assembly` — State manager for large YAML uploads
-- `get_assembled_yaml` — Retrieve assembled content
-
-**Lookup (5)**
-- `list_available_specs` — List loaded IRI specifications
-- `get_endpoint_schema` — Get request/response schema for an endpoint
-- `get_schema_definition` — Get a schema from components
-- `validate_payload_against_schema` — Validate JSON against a schema
-- `list_schema_names` — List all schemas in a spec
+All validation logic (structural, style guide, cross-spec consistency, conditional logic) is performed by the LLM using the calibrated system prompt — no programmatic validators.
 
 ### Governance Scorecard (100 pts)
 
@@ -98,7 +95,7 @@ Standard-Agent/
 |---|---|
 | A) OpenAPI 3.1 Conformance | 30 pts |
 | B) IRI DFA Style Guide | 25 pts |
-| C) DD Coverage & Fidelity | 25 pts |
+| C) Cross-Spec Consistency | 25 pts |
 | D) Evidence & Traceability | 10 pts |
 | E) Operational Readiness | 10 pts |
 
@@ -109,7 +106,7 @@ Standard-Agent/
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/` | Chat UI (open in browser) |
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check + version info |
 | `POST` | `/chat` | Send a message to the agent |
 
 ### Example: curl
@@ -117,19 +114,27 @@ Standard-Agent/
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"input": [{"role": "user", "content": "What IRI specs do you know about?"}]}'
+  -d '{"input": [{"role": "user", "content": "Validate this OpenAPI spec: ..."}]}'
 ```
 
 ### Example: Python
 
 ```python
-import requests
+from agent import create_agent
 
-response = requests.post("http://localhost:8000/chat", json={
-    "input": [{"role": "user", "content": "Validate this OpenAPI spec: ..."}]
-})
-print(response.json()["output"])
+agent = create_agent()
+result = agent("Review this OpenAPI 3.1 YAML for IRI compliance: ...")
+print(result)
 ```
+
+## Version History
+
+| Version | Architecture | Score | Notes |
+|---|---|---|---|
+| **v1.0 (production)** | Calibrated prompt + 2 fetch tools | 87/100 | Best accuracy, minimal deps |
+| v3 (archived) | Zero tools, pure LLM | 87/100 | No URL fetch capability |
+| v2 (archived) | 6 I/O tools | 78/100 | Over-reports cross-spec issues |
+| v1 (archived) | 16 tools, heavy deps | — | Could not run (missing deps) |
 
 ## Draft API Specifications
 

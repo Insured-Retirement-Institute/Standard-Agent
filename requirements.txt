@@ -1,14 +1,18 @@
-# IRI Standards Agent — Python dependencies
+# IRI Standards Agent v1.0 — Python dependencies
 # Install: pip install -r requirements.txt
 
+# Core
+strands-agents
+databricks-sdk
+PyYAML
+
+# Server
 fastapi
 uvicorn[standard]
 pydantic
-strands-agents
-openai
-PyYAML
-ruamel.yaml
-jsonschema
-openapi-spec-validator
-python-dotenv
+
+# Optional (Data Dictionary Excel parsing)
 openpyxl
+
+# Dev only (not required for production)
+# python-dotenv

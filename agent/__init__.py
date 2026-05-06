@@ -1,7 +1,5 @@
-# IRI Standards Agent Package
-# Portable version — no Databricks dependencies required.
-#
-# Structure:
-#   agent.py        — Agent creation (entry point)
-#   tools.py        — 13 programmatic tools for OpenAPI validation
-#   system_prompt.py — Full system prompt with governance rules
+"""
+IRI Standards Agent — Production v1.0
+Import from here for the canonical agent.
+"""
+from agent.agent_prod import create_agent, SYSTEM_PROMPT
