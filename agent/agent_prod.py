@@ -1,13 +1,19 @@
 """
 IRI Standards Agent — Production v1.0
-Uses Claude Opus via Databricks Foundation Model API.
 
 Architecture:
 - 2 fetch tools (URL download only — LLM cannot make HTTP requests)
 - ALL validation, style checking, structural analysis, and scoring
   done by the LLM via the calibrated system prompt.
 
-Benchmark: 87/100 on FundTransfer v1.2.0 (Δ=3 from reference benchmark of 90/100)
+Authentication:
+- Supports any OpenAI-compatible API endpoint (set via environment variables)
+- For managed environments: auto-discovers host/token from workspace SDK
+
+Environment Variables:
+  OPENAI_API_KEY   — API key for the model endpoint
+  OPENAI_BASE_URL  — Base URL for the OpenAI-compatible endpoint
+  MODEL_ID         — Model identifier (default: databricks-claude-opus-4-7)
 """
 import os
 
@@ -450,33 +456,77 @@ CRITICAL BEHAVIOR
 """
 
 
+
+def _patch_metrics(agent: Agent) -> None:
+    """Patch strands event loop metrics to handle endpoints that don't return usage data.
+
+    Some OpenAI-compatible endpoints omit token usage from responses, which causes
+    strands to crash with: TypeError: unsupported operand type(s) for +=: 'int' and 'NoneType'.
+    This patch silently skips the metrics update when usage data is None.
+    """
+    original_update = agent.event_loop_metrics.update_usage
+
+    def _safe_update(usage):
+        try:
+            original_update(usage)
+        except TypeError:
+            pass
+
+    agent.event_loop_metrics.update_usage = _safe_update
+
+
+def _get_credentials() -> tuple:
+    """Resolve API credentials from environment or workspace SDK.
+
+    Resolution order:
+    1. OPENAI_API_KEY + OPENAI_BASE_URL environment variables (explicit)
+    2. Workspace SDK auto-discovery (for managed compute environments)
+
+    Returns:
+        (api_key, base_url) tuple
+    """
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "")
+
+    if api_key and base_url:
+        return api_key, base_url
+
+    # Fall back to workspace SDK for managed environments
+    try:
+        from databricks.sdk import WorkspaceClient
+
+        w = WorkspaceClient()
+        host = w.config.host.rstrip("/")
+        auth_headers = w.config.authenticate()
+        token = auth_headers.get("Authorization", "").replace("Bearer ", "")
+        return token, f"{host}/serving-endpoints"
+    except Exception as e:
+        raise RuntimeError(
+            "No credentials found. Set OPENAI_API_KEY + OPENAI_BASE_URL "
+            "environment variables, or run in a managed workspace environment. "
+            f"SDK error: {e}"
+        ) from e
+
+
 def create_agent(
     model_id: str = None,
 ) -> Agent:
     """Create and return the IRI Standards Agent (Production v1.0).
 
-    Uses Databricks-hosted Claude via the OpenAI-compatible serving endpoint.
-    2 fetch tools for URL-based input; all analysis done by the LLM.
+    Connects to an OpenAI-compatible LLM endpoint with 2 fetch tools
+    for URL-based input. All analysis is performed by the LLM.
 
     Args:
         model_id: Model identifier. Falls back to MODEL_ID env var,
                   then to "databricks-claude-opus-4-7".
     """
-    from databricks.sdk import WorkspaceClient
-
-    w = WorkspaceClient()
-    host = w.config.host.rstrip("/")
-
-    # On serverless runtime, w.config.token is None — extract from auth headers
-    auth_headers = w.config.authenticate()
-    token = auth_headers.get("Authorization", "").replace("Bearer ", "")
-
+    api_key, base_url = _get_credentials()
     model_id = model_id or os.environ.get("MODEL_ID", "databricks-claude-opus-4-7")
 
     model = OpenAIModel(
         client_args={
-            "api_key": token,
-            "base_url": f"{host}/serving-endpoints",
+            "api_key": api_key,
+            "base_url": base_url,
         },
         model_id=model_id,
         params={"max_tokens": 16384},
@@ -488,9 +538,12 @@ def create_agent(
         system_prompt=SYSTEM_PROMPT,
     )
 
+    # Apply metrics safety patch for endpoints that omit usage data
+    _patch_metrics(agent)
+
     print(f"[agent] IRI Standards Agent (Production v1.0) initialized", flush=True)
     print(f"[agent]   Model: {model_id}", flush=True)
-    print(f"[agent]   Host: {host}", flush=True)
+    print(f"[agent]   Endpoint: {base_url}", flush=True)
     print(f"[agent]   Tools: {len(PROD_TOOLS)} (fetch only)", flush=True)
 
     return agent

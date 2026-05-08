@@ -4,9 +4,11 @@
 
 Validates, creates, and updates OpenAPI specs using the IRI Data Dictionary, DFA Style Guide, and approved IRI specs — with a 100-point governance scorecard and hallucination resistance.
 
+---
+
 ## Architecture
 
-Production v1.0 uses a **calibrated LLM prompt** (Claude Opus via Databricks) with only 2 fetch tools. All validation, style checking, and scoring is performed by the LLM reasoning engine — not programmatic validators.
+Production v1.0 uses a **calibrated LLM prompt** with only 2 fetch tools. All validation, style checking, and scoring is performed by the LLM reasoning engine — not programmatic validators.
 
 | Component | Purpose |
 |---|---|
@@ -14,13 +16,13 @@ Production v1.0 uses a **calibrated LLM prompt** (Claude Opus via Databricks) wi
 | `agent/tools_prod.py` | `fetch_yaml_from_url`, `fetch_data_dictionary` |
 | `app_prod.py` | FastAPI server (port 8000) with chat UI |
 
-**Benchmark:** 87/100 on FundTransfer v1.2.0 (Δ=3 from reference benchmark of 90/100)
+---
 
 ## Quick Start
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-org/Standard-Agent.git
+git clone <repo-url>
 cd Standard-Agent
 
 # 2. Create a virtual environment
@@ -31,22 +33,34 @@ source venv/bin/activate        # macOS / Linux
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Start the agent
+# 4. Configure credentials (see Configuration below)
+cp .env.example .env
+# Edit .env with your API key and endpoint
+
+# 5. Start the agent
 python app_prod.py
 ```
 
 Open **http://localhost:8000** in your browser to use the chat UI.
 
+---
+
 ## Configuration
 
-The agent uses **Databricks Foundation Model API** (Claude Opus). Authentication is handled automatically via `databricks-sdk`.
+The agent connects to any **OpenAI-compatible API endpoint** (e.g., Azure OpenAI, Anthropic via proxy, or any LLM gateway that exposes the `/chat/completions` interface).
 
-| Environment Variable | Description | Default |
+| Environment Variable | Description | Required |
 |---|---|---|
-| `MODEL_ID` | Serving endpoint model ID | `databricks-claude-opus-4-7` |
-| `PORT` | Server port | `8000` |
+| `OPENAI_API_KEY` | API key for the LLM endpoint | Yes |
+| `OPENAI_BASE_URL` | Base URL for the OpenAI-compatible endpoint (e.g., `https://your-host/v1`) | Yes |
+| `MODEL_ID` | Model identifier to use | No (default: `databricks-claude-opus-4-7`) |
+| `PORT` | Server port | No (default: `8000`) |
 
-For local development outside Databricks, set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables.
+Create a `.env` file in the project root (see `.env.example`) or export these variables in your shell.
+
+> **Managed compute environments**: If running inside a workspace with SDK-based auth (e.g., a notebook or managed app), the agent will auto-discover credentials from the workspace context. No manual env vars needed.
+
+---
 
 ## Project Structure
 
@@ -63,11 +77,13 @@ Standard-Agent/
 ├── archive/                    # Previous agent versions (DO NOT USE)
 │   ├── README.md               # Version history
 │   └── agent/                  # v1, v2, v3 agent files
-├── test_agent_prod             # Production validation test notebook
 ├── requirements.txt            # Python dependencies
+├── .env.example                # Environment variable template
 ├── LICENSE
 └── README.md
 ```
+
+---
 
 ## Agent Capabilities
 
@@ -76,7 +92,7 @@ Standard-Agent/
 | Mode | Trigger | Output |
 |---|---|---|
 | **VALIDATE** | Provide YAML + "validate only" | Governance scorecard |
-| **UPDATE** | Provide existing YAML | Corrected YAML + scorecard |
+| **UPDATE** | Provide existing YAML + change request | Corrected YAML + scorecard |
 | **BUILD** | Provide Data Dictionary (no YAML) | New OpenAPI 3.1 YAML |
 | **COMPARE** | Provide two versions | Diff analysis |
 
@@ -84,8 +100,8 @@ Standard-Agent/
 
 | Tool | Purpose |
 |---|---|
-| `fetch_yaml_from_url` | Download YAML from GitHub/raw URLs |
-| `fetch_data_dictionary` | Download Excel/CSV Data Dictionary |
+| `fetch_yaml_from_url` | Download YAML from GitHub or any public URL |
+| `fetch_data_dictionary` | Download and parse Excel/CSV Data Dictionary files |
 
 All validation logic (structural, style guide, cross-spec consistency, conditional logic) is performed by the LLM using the calibrated system prompt — no programmatic validators.
 
@@ -100,6 +116,8 @@ All validation logic (structural, style guide, cross-spec consistency, condition
 | E) Operational Readiness | 10 pts |
 
 **Gates:** PASS ≥ 85 (no critical fails) · CONDITIONAL 70–84 · FAIL < 70 or any critical fail
+
+---
 
 ## API Endpoints
 
@@ -127,6 +145,8 @@ result = agent("Review this OpenAPI 3.1 YAML for IRI compliance: ...")
 print(result)
 ```
 
+---
+
 ## Version History
 
 | Version | Architecture | Score | Notes |
@@ -136,12 +156,16 @@ print(result)
 | v2 (archived) | 6 I/O tools | 78/100 | Over-reports cross-spec issues |
 | v1 (archived) | 16 tools, heavy deps | — | Could not run (missing deps) |
 
+---
+
 ## Draft API Specifications
 
 The working group's draft OpenAPI specifications are in the [draft-api-specs](./draft-api-specs) directory. Once reviewed and approved by the [Governance Committee](https://www.irionline.org/member-programs/operations-technology/committee-hub/governance/), they are moved to the [Digital-First-Specifications](https://github.com/Insured-Retirement-Institute/Digital-First-Specifications) repository and published at [specs.dfa.irionline.org](https://specs.dfa.irionline.org).
 
+---
+
 ## How to Engage
 
-- Please contact the business owners or IRI (hpikus@irionline.org) to get added to working group discussions or have feedback on the agent.
+- Contact IRI (hpikus@irionline.org) to join working group discussions or provide feedback on the agent.
 - Security issues and bugs should be reported to Katherine Dease (kdease@irionline.org).
 - See the [Digital-First-Specifications](https://github.com/Insured-Retirement-Institute/Digital-First-Specifications) repository for the code of conduct and standards governance workflow.
