@@ -1,0 +1,21 @@
+# IRI Standards Agent v1.0 — Python dependencies
+# Install: pip install -r requirements.txt
+
+# Core — agent framework + LLM connectivity
+strands-agents
+openai
+PyYAML
+
+# Server
+fastapi
+uvicorn[standard]
+pydantic
+
+# Optional — Data Dictionary Excel parsing
+openpyxl
+
+# Optional — auto-credential discovery in managed compute environments
+databricks-sdk
+
+# Optional — load .env file for local development
+python-dotenv
